@@ -1,0 +1,41 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKERHUB_REPO = 'nagendrappa1/blue-app'   // Change to green-app for green version
+    IMAGE_TAG      = 'v1'                      // Update per version
+    DEPLOY_COLOR   = 'blue'                    // or 'green'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Prepare HTML') {
+      steps {
+        sh 'cp index-${DEPLOY_COLOR}.html index.html'
+      }
+    }
+
+    stage('Build and Push Image') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh '''
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+            docker build -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
+            docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Docker image ${DOCKERHUB_REPO}:${IMAGE_TAG} pushed successfully."
+    }
+  }
+}

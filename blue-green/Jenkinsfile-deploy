@@ -1,0 +1,64 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKERHUB_REPO = 'nagendrappa1/blue-app'   // or green-app
+    IMAGE_TAG      = 'v1'
+    DEPLOY_COLOR   = 'blue'                    // or green
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Deploy to Minikube') {
+      steps {
+        withCredentials([file(credentialsId: 'minikube', variable: 'KCFG')]) {
+          sh '''
+            export KUBECONFIG="$KCFG"
+            cp base-deployment.yaml ${DEPLOY_COLOR}-deployment.yaml
+            sed -i "s|__COLOR__|${DEPLOY_COLOR}|g" ${DEPLOY_COLOR}-deployment.yaml
+            sed -i "s|__IMAGE__|${DOCKERHUB_REPO}:${IMAGE_TAG}|g" ${DEPLOY_COLOR}-deployment.yaml
+
+            kubectl apply -f ${DEPLOY_COLOR}-deployment.yaml
+            kubectl rollout status deployment/${DEPLOY_COLOR}-deployment
+          '''
+        }
+      }
+    }
+
+    stage('Switch Traffic') {
+      steps {
+        withCredentials([file(credentialsId: 'minikube', variable: 'KCFG')]) {
+          sh '''
+            export KUBECONFIG="$KCFG"
+            kubectl patch service app-service -p "{\"spec\":{\"selector\":{\"app\":\"${DEPLOY_COLOR}\"}}}"
+          '''
+        }
+      }
+    }
+
+    stage('Validate') {
+      steps {
+        withCredentials([file(credentialsId: 'minikube', variable: 'KCFG')]) {
+          sh '''
+            export KUBECONFIG="$KCFG"
+            POD=$(kubectl get pods -l app=${DEPLOY_COLOR} -o jsonpath="{.items[0].metadata.name}")
+            kubectl port-forward pod/$POD 8080:80 &
+            sleep 5
+            curl -s http://localhost:8080 | grep "${DEPLOY_COLOR^^} version"
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ ${DEPLOY_COLOR} version deployed and traffic switched."
+    }
+  }
+}
