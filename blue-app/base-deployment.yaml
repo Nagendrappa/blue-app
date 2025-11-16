@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: __COLOR__-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: __COLOR__
+  template:
+    metadata:
+      labels:
+        app: __COLOR__
+    spec:
+      containers:
+      - name: nginx
+        image: __IMAGE__
+        ports:
+        - containerPort: 80
